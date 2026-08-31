@@ -142,19 +142,25 @@ def add_watermark(
     quality: int = 95,
     location: str | None = None,
     font_scale: float | None = None,
+    custom_text: str | None = None,
 ) -> None:
-    """给单张照片加时间水印并保存到 output_path。
+    """给单张照片加水印并保存到 output_path。
 
+    custom_text 非空时，水印直接显示这段文字（适用于 EXIF 丢失、
+    需手动补记拍摄信息的照片），不再读取时间与地点。
     location 为已匹配好的地点文本（如 "北京市 朝阳区"），
     非空时水印显示为 "2023-01-24 16:47 · 北京市 朝阳区"。
     font_scale 为 None 时自动按图片尺寸缩放；为数字时按倍率缩放（1.0=标准）。
     """
-    capture_time, _ = get_capture_time(image_path)
-    if capture_time is None:
-        raise ValueError("无法获取照片时间")
-    time_str = capture_time.strftime(time_format)
-    if location:
-        time_str = f"{time_str} · {location}"
+    if custom_text and custom_text.strip():
+        time_str = custom_text.strip()
+    else:
+        capture_time, _ = get_capture_time(image_path)
+        if capture_time is None:
+            raise ValueError("无法获取照片时间")
+        time_str = capture_time.strftime(time_format)
+        if location:
+            time_str = f"{time_str} · {location}"
 
     with Image.open(image_path) as img:
         # 应用 EXIF Orientation：手机竖拍照片的原始像素是横向的，
@@ -248,6 +254,7 @@ def process_batch(
     show_location: bool = True,
     location_provider=None,
     font_scale: float | None = None,
+    custom_text: str | None = None,
     progress_callback=None,
 ) -> list[tuple[str, bool, str]]:
     """批量处理。输出文件名与原文件一致，保存到 output_dir。
@@ -255,6 +262,8 @@ def process_batch(
     show_location 为 True 且 location_provider 非 None 时，
     每张照片调用 location_provider(path) 获取地点文本（None 表示无地点）。
     font_scale 为 None 时字号自动缩放；为数字时按倍率缩放。
+    custom_text 非空时，全部照片统一使用这段文字作为水印，
+    不再读取时间与地点（适用于 EXIF 丢失的场景）。
 
     返回 [(原路径, 是否成功, 信息), ...]。
     """
@@ -269,9 +278,13 @@ def process_batch(
         output_path = os.path.join(output_dir, filename)
         try:
             location = None
-            if show_location and location_provider is not None:
+            if custom_text and custom_text.strip():
+                location = None
+            elif show_location and location_provider is not None:
                 location = location_provider(path)
-            add_watermark(path, output_path, time_format, position, location=location, font_scale=font_scale)
+            add_watermark(path, output_path, time_format, position,
+                          location=location, font_scale=font_scale,
+                          custom_text=custom_text)
             results.append((path, True, output_path))
         except Exception as e:  # noqa: BLE001
             results.append((path, False, str(e)))

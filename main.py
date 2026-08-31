@@ -121,6 +121,15 @@ class App:
                         variable=self.loc_var, command=self.refresh_list)\
             .grid(row=1, column=0, columnspan=6, sticky="w", padx=8, pady=(0, 8))
 
+        # 自定义水印文字（EXIF 丢失时手动补记，优先于自动读取）
+        self.custom_var = tk.StringVar()
+        ttk.Label(opt, text="自定义水印:").grid(row=2, column=0, sticky="w", padx=8, pady=(0, 8))
+        custom_entry = ttk.Entry(opt, textvariable=self.custom_var)
+        custom_entry.grid(row=2, column=1, columnspan=3, sticky="we", pady=(0, 8))
+        ttk.Label(opt, text="填写后优先于自动读取（EXIF 丢失时手动补记）")\
+            .grid(row=2, column=4, columnspan=2, sticky="w", pady=(0, 8))
+        opt.columnconfigure(1, weight=1)
+
         # 进度 + 开始按钮
         bottom = ttk.Frame(self.root)
         bottom.pack(fill="x", **pad)
@@ -260,6 +269,7 @@ class App:
         files = self.files[:]
         show_loc = self.loc_var.get()
         font_scale = wm.FONT_SIZES.get(self.fontsize_var.get())
+        custom_text = self.custom_var.get().strip()
 
         def location_provider(path):
             gps = wm.get_gps(path)
@@ -271,6 +281,7 @@ class App:
                 show_location=show_loc,
                 location_provider=location_provider,
                 font_scale=font_scale,
+                custom_text=custom_text or None,
                 progress_callback=progress_cb,
             )
             self.root.after(0, lambda: self.done(results, output_dir))
