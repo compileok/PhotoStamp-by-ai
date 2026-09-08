@@ -8,6 +8,7 @@ import os
 import re
 import threading
 import tkinter as tk
+import traceback
 from datetime import datetime
 from tkinter import filedialog, messagebox, ttk
 
@@ -21,6 +22,19 @@ try:
     DND_OK = True
 except ImportError:
     DND_OK = False
+
+# 拖拽调试日志（保留无害，用于排查打包版拖放问题）
+_DND_LOG = os.path.expanduser("~/watermark_dnd.log")
+
+
+def _dbg(*args):
+    line = " ".join(str(a) for a in args)
+    print(line, flush=True)
+    try:
+        with open(_DND_LOG, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+    except Exception:
+        pass
 
 TIME_FORMATS = [
     ("2026-08-15 10:44", "%Y-%m-%d %H:%M"),
@@ -154,10 +168,15 @@ class App:
     def _enable_dnd(self):
         """注册拖拽放下目标（需 tkinterdnd2，未安装则跳过）。"""
         if not DND_OK:
+            _dbg("DND not available, skip register")
             return
         for widget in (self.root, self.tree):
-            widget.drop_target_register(DND_FILES)
-            widget.dnd_bind("<<Drop>>", self._on_drop)
+            try:
+                widget.drop_target_register(DND_FILES)
+                widget.dnd_bind("<<Drop>>", self._on_drop)
+                _dbg(f"register OK on {type(widget).__name__}")
+            except Exception:
+                _dbg("register FAILED:", traceback.format_exc())
 
     @staticmethod
     def _parse_dnd_paths(data: str) -> list[str]:
@@ -168,23 +187,29 @@ class App:
         return [p for p in paths if p]
 
     def _on_drop(self, event):
-        files, dirs, skipped = [], [], 0
-        for p in self._parse_dnd_paths(event.data):
-            if os.path.isdir(p):
-                dirs.append(p)
-            elif wm.is_supported(p):
-                files.append(p)
-            else:
-                skipped += 1
-        if dirs:
-            for d in dirs:
-                found = wm.scan_folder(d)
-                self.log(f"拖入文件夹 {d}：找到 {len(found)} 张图片")
-                files.extend(found)
-        if files:
-            self.add_files(files)
-        if skipped:
-            self.log(f"已忽略 {skipped} 个不支持的文件")
+        _dbg(">>> DROP raw:", repr(event.data)[:300])
+        try:
+            files, dirs, skipped = [], [], 0
+            for p in self._parse_dnd_paths(event.data):
+                if os.path.isdir(p):
+                    dirs.append(p)
+                elif wm.is_supported(p):
+                    files.append(p)
+                else:
+                    skipped += 1
+            _dbg(f"parsed: files={len(files)} dirs={len(dirs)} skipped={skipped}")
+            if dirs:
+                for d in dirs:
+                    found = wm.scan_folder(d)
+                    self.log(f"拖入文件夹 {d}：找到 {len(found)} 张图片")
+                    files.extend(found)
+            if files:
+                self.add_files(files)
+            if skipped:
+                self.log(f"已忽略 {skipped} 个不支持的文件")
+            _dbg("handler done")
+        except Exception:
+            _dbg("DROP handler CRASHED:", traceback.format_exc())
 
     # ---------- 逻辑 ----------
     def log(self, msg: str):

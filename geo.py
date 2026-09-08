@@ -15,9 +15,28 @@ import sys
 
 
 def _resource_path(*parts: str) -> str:
-    """定位资源文件，兼容开发环境和 PyInstaller 打包环境。"""
-    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
-    return os.path.join(base, *parts)
+    """定位资源文件，兼容开发环境和 PyInstaller 打包环境。
+
+    PyInstaller macOS .app 布局特殊：sys._MEIPASS 指向 Contents/Frameworks，
+    而 --add-data 的数据可能落在 Contents/Resources，也可能带不带 data/ 层级，
+    所以 frozen 时逐个候选位置探测，取第一个真实存在的。
+    """
+    if getattr(sys, "frozen", False):
+        exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+        bases = [
+            getattr(sys, "_MEIPASS", None),             # Windows/Linux/onefile；macOS=Frameworks
+            os.path.abspath(os.path.join(exe_dir, "..", "Resources")),  # macOS .app 数据目录
+            exe_dir,                                    # 兜底：可执行文件旁
+        ]
+        for base in bases:
+            if not base:
+                continue
+            p = os.path.join(base, *parts)
+            if os.path.exists(p):
+                return p
+        return os.path.join(bases[0] or exe_dir, *parts)
+    # 开发环境：geo.py 同级 data/ 目录
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), *parts)
 
 
 _DATA_PATH = _resource_path("data", "districts.json")
